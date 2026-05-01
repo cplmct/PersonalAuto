@@ -272,6 +272,6 @@ export function useMaintenanceCards(
         return buildMaintenanceCardData(st, logs, currentOdometerKm, interval);
       })
       .filter((c): c is MaintenanceCardData => c !== null)
-      .sort((a, b) => a.serviceType.sort_order - b.serviceType.sort_order);
+      .sort((a, b) => (a.serviceType.sort_order ?? 0) - (b.serviceType.sort_order ?? 0));
   }, [vehicleId, currentOdometerKm, serviceTypeMap, logs, intervals]);
 }

@@ -4,6 +4,14 @@ import { useAuth } from '@/providers/AuthProvider';
 import { toKm } from '@/utils/units';
 import type { Vehicle, OdometerUnit } from '@/types/database';
 
+// ─── Row cast ─────────────────────────────────────────────────────────────────
+// The DB stores odometer_unit as plain text; the domain Vehicle type narrows it
+// to OdometerUnit. Cast here at the single boundary between DB and app state.
+import type { VehicleRow } from '@/supabase/database.types';
+function toVehicle(row: VehicleRow): Vehicle {
+  return row as unknown as Vehicle;
+}
+
 // ─── Create input ─────────────────────────────────────────────────────────────
 
 // Fields the caller must supply when creating a vehicle
@@ -84,7 +92,7 @@ export function useVehicles() {
     if (err) {
       setError(err.message);
     } else {
-      setVehicles(data ?? []);
+      setVehicles((data ?? []).map(toVehicle));
     }
     setLoading(false);
   }, [user]);
@@ -121,8 +129,9 @@ export function useVehicles() {
     const seedErr = await seedAllIntervals(data.id);
     if (seedErr) setError(`Vehicle created but maintenance setup failed: ${seedErr}`);
 
-    setVehicles(prev => [...prev, data]);
-    return data;
+    const vehicle = toVehicle(data);
+    setVehicles(prev => [...prev, vehicle]);
+    return vehicle;
   };
 
   // ── Update vehicle ─────────────────────────────────────────────────────────
@@ -144,8 +153,9 @@ export function useVehicles() {
       .single();
 
     if (!err && data) {
-      setVehicles(prev => prev.map(v => v.id === id ? data : v));
-      return data;
+      const vehicle = toVehicle(data);
+      setVehicles(prev => prev.map(v => v.id === id ? vehicle : v));
+      return vehicle;
     }
     return null;
   };

@@ -1,7 +1,7 @@
 import { Droplets, Disc, Wrench, Zap, Wind, RotateCw, Eye, Gauge } from 'lucide-react-native';
 
 interface ServiceIconProps {
-  iconName?: string;
+  iconName?: string | null;
   color: string;
   size?: number;
 }
