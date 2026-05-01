@@ -54,8 +54,7 @@ export async function signUpWithEmail(
 // Until the Supabase Google provider is enabled, signInWithGoogle() will
 // return a descriptive error string that the UI surfaces gracefully.
 
-const OAUTH_REDIRECT: string | undefined = undefined;
-// const OAUTH_REDIRECT = 'autotrack://auth/callback';
+const OAUTH_REDIRECT = 'autotrack://auth/callback';
 
 export async function signInWithGoogle(): Promise<AuthResult> {
   const { error } = await supabase.auth.signInWithOAuth({
