@@ -42,30 +42,60 @@ export async function signUpWithEmail(
 
 // ─── Google OAuth ─────────────────────────────────────────────────────────────
 //
-// Wiring checklist (nothing in this file needs to change):
-//   1. Supabase dashboard → Authentication → Providers → Google → enable,
-//      paste Client ID + Secret from Google Cloud Console.
-//   2. Add the redirect URI shown in the dashboard to the Google OAuth app's
-//      "Authorised redirect URIs" list.
-//   3. In app.json add a scheme, e.g. "scheme": "autotrack"
-//   4. In this file, set OAUTH_REDIRECT to `autotrack://auth/callback`
-//   5. In app/_layout.tsx, add a Linking listener that calls
-//      supabase.auth.exchangeCodeForSession(url) when the deep-link fires.
+// Setup checklist:
+//   1. Supabase dashboard → Authentication → Providers → Google → Enable.
+//      Paste your Google Cloud Console OAuth Client ID and Client Secret.
 //
-// Until the Supabase Google provider is enabled, signInWithGoogle() will
-// return a descriptive error string that the UI surfaces gracefully.
+//   2. In Supabase dashboard → Authentication → URL Configuration, add:
+//        autotrack://auth/callback
+//      to the "Redirect URLs" allow-list.
+//
+//   3. In Google Cloud Console → OAuth 2.0 Client → "Authorised redirect URIs",
+//      add the Supabase callback URL shown in the Supabase dashboard, e.g.:
+//        https://<your-project-ref>.supabase.co/auth/v1/callback
+//      NOT the app scheme — Google redirects to Supabase, which then redirects
+//      to the app scheme.
+//
+// Flow:
+//   signInWithGoogle() → gets OAuth URL from Supabase → opens it in an
+//   in-app browser via expo-web-browser → browser redirects to
+//   autotrack://auth/callback?code=... → openAuthSessionAsync intercepts it →
+//   we call exchangeCodeForSession(url) → onAuthStateChange fires → AuthGate
+//   navigates to /(tabs).
+
+import * as WebBrowser from 'expo-web-browser';
+
+// Required so the in-app browser session can be dismissed on Android when
+// the redirect back to the app fires.
+WebBrowser.maybeCompleteAuthSession();
 
 const OAUTH_REDIRECT = 'autotrack://auth/callback';
 
 export async function signInWithGoogle(): Promise<AuthResult> {
-  const { error } = await supabase.auth.signInWithOAuth({
+  // 1. Ask Supabase for the Google OAuth URL (PKCE flow).
+  const { data, error: urlError } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
       redirectTo: OAUTH_REDIRECT,
-      skipBrowserRedirect: false,
+      skipBrowserRedirect: true, // We open the browser ourselves below.
     },
   });
-  return { error: normaliseAuthError(error) };
+
+  if (urlError || !data.url) {
+    return { error: normaliseAuthError(urlError) ?? 'Could not start Google sign-in.' };
+  }
+
+  // 2. Open the OAuth URL in an in-app browser tab and wait for the redirect.
+  const result = await WebBrowser.openAuthSessionAsync(data.url, OAUTH_REDIRECT);
+
+  if (result.type !== 'success') {
+    // User cancelled or browser failed — not an error worth surfacing.
+    return { error: null };
+  }
+
+  // 3. Exchange the authorization code in the redirect URL for a session.
+  const { error: sessionError } = await supabase.auth.exchangeCodeForSession(result.url);
+  return { error: normaliseAuthError(sessionError) };
 }
 
 // ─── Error normalisation ──────────────────────────────────────────────────────

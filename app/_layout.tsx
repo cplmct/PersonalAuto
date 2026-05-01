@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Stack, router, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Linking } from 'react-native';
 import { useFonts } from 'expo-font';
 import {
   Inter_400Regular,
@@ -10,8 +10,10 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
+import * as WebBrowser from 'expo-web-browser';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
+import { supabase } from '@/lib/supabase';
 import { Colors } from '@/constants/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -68,6 +70,29 @@ function AuthGate() {
 
 export default function RootLayout() {
   useFrameworkReady();
+
+  // ── OAuth deep-link handler ────────────────────────────────────────────────
+  // Handles the case where the app was cold-started from the Google OAuth
+  // redirect (i.e. the app was killed while the in-app browser was open).
+  // openAuthSessionAsync already covers the foreground case inside
+  // signInWithGoogle(), so this only fires on a genuine cold-start deep-link.
+  useEffect(() => {
+    // Check if the app was opened with an OAuth callback URL.
+    Linking.getInitialURL().then((url) => {
+      if (url?.includes('autotrack://auth/callback')) {
+        WebBrowser.maybeCompleteAuthSession();
+        supabase.auth.exchangeCodeForSession(url);
+      }
+    });
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      if (url?.includes('autotrack://auth/callback')) {
+        supabase.auth.exchangeCodeForSession(url);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const [fontsLoaded, fontError] = useFonts({
     'Inter-Regular': Inter_400Regular,
