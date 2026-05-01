@@ -73,30 +73,26 @@ export default function RootLayout() {
 
   // ── OAuth deep-link handler ────────────────────────────────────────────────
   // maybeCompleteAuthSession() must be called once per app start so that
-  // expo-web-browser can close the in-app browser tab on Android.
-  // The foreground OAuth case (openAuthSessionAsync) also benefits from this.
+  // expo-web-browser can dismiss the in-app browser tab on Android after the
+  // OAuth redirect fires.
+  //
+  // Foreground OAuth (the normal path): openAuthSessionAsync in signInWithGoogle()
+  // intercepts the redirect before it ever reaches the OS URL dispatcher, so
+  // signInWithGoogle() calls exchangeCodeForSession() itself. No listener needed.
+  //
+  // Cold-start OAuth (app was killed while the browser was open): the OS
+  // delivers the callback URL as the launch URL, which getInitialURL() captures.
+  // This is the only case where _layout.tsx needs to exchange the code.
   useEffect(() => {
     WebBrowser.maybeCompleteAuthSession();
 
-    // Cold-start: app was killed while the OAuth browser was open.
     Linking.getInitialURL().then((url) => {
       if (url?.includes(OAUTH_REDIRECT)) {
         supabase.auth.exchangeCodeForSession(url).then(({ error }) => {
-          if (error) console.warn('[OAuth] exchangeCodeForSession (initial URL):', error.message);
+          if (error) console.warn('[OAuth] exchangeCodeForSession (cold-start):', error.message);
         });
       }
     }).catch((e) => console.warn('[OAuth] getInitialURL error:', e));
-
-    // Foreground resume: app receives deep link while running.
-    const subscription = Linking.addEventListener('url', ({ url }) => {
-      if (url?.includes(OAUTH_REDIRECT)) {
-        supabase.auth.exchangeCodeForSession(url).then(({ error }) => {
-          if (error) console.warn('[OAuth] exchangeCodeForSession (url event):', error.message);
-        });
-      }
-    });
-
-    return () => subscription.remove();
   }, []);
 
   const [fontsLoaded, fontError] = useFonts({
