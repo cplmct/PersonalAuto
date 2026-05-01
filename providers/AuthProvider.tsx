@@ -6,26 +6,20 @@ import type { Profile, OdometerUnit } from '@/types/database';
 // Re-export Profile so callers import from one place
 export type { Profile };
 
+const PROFILE_FIELDS = 'id, display_name, avatar_url, distance_unit, preferred_vehicle_id, created_at, updated_at';
+
 // ─── Context type ─────────────────────────────────────────────────────────────
 
 interface AuthContextValue {
-  /** Current Supabase session — null when signed out */
   session: Session | null;
-  /** Convenience shorthand for session.user */
   user: User | null;
-  /** Public profile row from profiles table */
   profile: Profile | null;
-  /**
-   * The user's preferred distance display unit, derived from profile.distance_unit.
-   * Defaults to 'mi' before profile loads. Use this everywhere distances are shown.
-   */
+  /** Derived from profile.distance_unit. Defaults to 'km' before profile loads. */
   distanceUnit: OdometerUnit;
   /** True while the initial session check is in flight */
   loading: boolean;
   signOut: () => Promise<void>;
-  /** Force-refresh the profile from the database (e.g. after editing settings) */
   refreshProfile: () => Promise<void>;
-  /** Persist a new distance_unit preference to the profile row */
   updateDistanceUnit: (unit: OdometerUnit) => Promise<void>;
 }
 
@@ -49,60 +43,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Ref used to cancel stale profile fetches if the session changes rapidly
-  const fetchAbortRef = useRef<AbortController | null>(null);
+  // Cancels in-flight fetches when the session changes (e.g. rapid sign-out).
+  const abortRef = useRef<AbortController | null>(null);
 
-  // ── Fetch profile for a given user id ──────────────────────────────────────
+  // ── Fetch profile ──────────────────────────────────────────────────────────
+  // Relies on the database trigger (handle_new_user) to have already created
+  // the row on sign-up. A client-side insert fallback is included only for
+  // edge cases where the trigger was skipped (e.g. admin-created users).
   async function fetchProfile(userId: string): Promise<void> {
-    fetchAbortRef.current?.abort();
+    abortRef.current?.abort();
     const controller = new AbortController();
-    fetchAbortRef.current = controller;
+    abortRef.current = controller;
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, display_name, avatar_url, distance_unit, preferred_vehicle_id, created_at, updated_at')
+      .select(PROFILE_FIELDS)
       .eq('id', userId)
       .maybeSingle();
 
     if (controller.signal.aborted) return;
 
-    if (!error && data) {
+    if (data) {
       setProfile(data as Profile);
-    } else {
-      // Profile row missing — create a minimal one so the app doesn't break.
-      const { data: upserted } = await supabase
-        .from('profiles')
-        .upsert({
-          id: userId,
-          display_name: '',
-          avatar_url: '',
-          distance_unit: 'km',
-          preferred_vehicle_id: null,
-          updated_at: new Date().toISOString(),
-        })
-        .select('id, display_name, avatar_url, distance_unit, preferred_vehicle_id, created_at, updated_at')
-        .maybeSingle();
-
-      if (!controller.signal.aborted && upserted) {
-        setProfile(upserted as Profile);
-      }
+      return;
     }
+
+    if (error) {
+      // Transient network/RLS error — do not attempt a write. The profile
+      // remains null; the UI can surface a retry through refreshProfile().
+      console.warn('[AuthProvider] profile fetch error:', error.message);
+      return;
+    }
+
+    // Row genuinely absent (trigger was skipped). Insert a minimal row.
+    // Only sets id and timestamps; column defaults supply distance_unit='km'.
+    const { data: inserted, error: insertError } = await supabase
+      .from('profiles')
+      .insert({ id: userId })
+      .select(PROFILE_FIELDS)
+      .maybeSingle();
+
+    if (controller.signal.aborted) return;
+
+    if (insertError) {
+      console.warn('[AuthProvider] profile insert error:', insertError.message);
+      return;
+    }
+
+    if (inserted) setProfile(inserted as Profile);
   }
 
-  // ── Bootstrap: restore persisted session on mount ─────────────────────────
+  // ── Bootstrap ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-      setSession(initialSession);
-      if (initialSession?.user) {
-        fetchProfile(initialSession.user.id).finally(() => setLoading(false));
+    supabase.auth.getSession().then(({ data: { session: initial } }) => {
+      setSession(initial);
+      if (initial?.user) {
+        fetchProfile(initial.user.id).finally(() => setLoading(false));
       } else {
         setLoading(false);
       }
     });
 
-    // IMPORTANT: onAuthStateChange callback must NOT be async.
-    // Calling supabase methods inside an async callback can deadlock the
-    // GoTrue client. Use an immediately-invoked async IIFE instead.
+    // IMPORTANT: this callback must NOT be async — awaiting Supabase methods
+    // inside onAuthStateChange can deadlock the GoTrue client.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
 
@@ -119,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       subscription.unsubscribe();
-      fetchAbortRef.current?.abort();
+      abortRef.current?.abort();
     };
   }, []);
 
@@ -129,24 +132,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }
 
-  // ── Exposed refresh for profile editing ───────────────────────────────────
+  // ── Refresh ───────────────────────────────────────────────────────────────
   async function refreshProfile(): Promise<void> {
     if (session?.user) await fetchProfile(session.user.id);
   }
 
-  // ── Update distance unit preference ───────────────────────────────────────
+  // ── Update distance unit ───────────────────────────────────────────────────
   async function updateDistanceUnit(unit: OdometerUnit): Promise<void> {
     if (!session?.user) return;
     const { data } = await supabase
       .from('profiles')
       .update({ distance_unit: unit, updated_at: new Date().toISOString() })
       .eq('id', session.user.id)
-      .select('id, display_name, avatar_url, distance_unit, preferred_vehicle_id, created_at, updated_at')
+      .select(PROFILE_FIELDS)
       .maybeSingle();
     if (data) setProfile(data as Profile);
   }
 
-  // Derived: distanceUnit falls back to 'km' until profile is loaded
   const distanceUnit: OdometerUnit = profile?.distance_unit ?? 'km';
 
   return (
