@@ -90,8 +90,11 @@ export function buildMaintenanceCardData(
     intervalOverride?.interval_months ?? serviceType.default_interval_months ?? null;
 
   // ── Distance calculations (canonical km) ──────────────────────────────────
-  // Use odometer_km_at_service when available; fall back to odometer_at_service
-  // (which may be in miles for legacy rows — best effort).
+  // odometer_km_at_service is the canonical value written by addLog since the
+  // schema migration. For older rows where it is null, odometer_at_service is
+  // used as a best-effort fallback — it may be in the user's display unit at
+  // the time of logging (mi or km) so calculations on legacy rows can be
+  // slightly off until the user re-logs the service.
   const logOdometerKm =
     lastLog !== null
       ? (lastLog.odometer_km_at_service ?? lastLog.odometer_at_service)

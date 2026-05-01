@@ -111,8 +111,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (newSession?.user) {
         (async () => {
-          await fetchProfile(newSession.user.id);
-          setLoading(false);
+          try {
+            await fetchProfile(newSession.user.id);
+          } catch (e) {
+            console.warn('[AuthProvider] fetchProfile threw:', e);
+          } finally {
+            setLoading(false);
+          }
         })();
       } else {
         setProfile(null);

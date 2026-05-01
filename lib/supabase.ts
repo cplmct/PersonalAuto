@@ -66,11 +66,11 @@ export async function signUpWithEmail(
 
 import * as WebBrowser from 'expo-web-browser';
 
-// Required so the in-app browser session can be dismissed on Android when
-// the redirect back to the app fires.
-WebBrowser.maybeCompleteAuthSession();
-
-const OAUTH_REDIRECT = 'autotrack://auth/callback';
+// Deep-link redirect URI used for OAuth. Must match:
+//   • app.json  → expo.scheme
+//   • Supabase Dashboard → Authentication → URL Configuration → Redirect URLs
+//   • Google Cloud Console → OAuth 2.0 → Authorised redirect URIs (the Supabase callback, not this)
+export const OAUTH_REDIRECT = 'autotrack://auth/callback';
 
 export async function signInWithGoogle(): Promise<AuthResult> {
   // 1. Ask Supabase for the Google OAuth URL (PKCE flow).

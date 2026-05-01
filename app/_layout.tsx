@@ -13,7 +13,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as WebBrowser from 'expo-web-browser';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
-import { supabase } from '@/lib/supabase';
+import { supabase, OAUTH_REDIRECT } from '@/lib/supabase';
 import { Colors } from '@/constants/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -72,22 +72,27 @@ export default function RootLayout() {
   useFrameworkReady();
 
   // ── OAuth deep-link handler ────────────────────────────────────────────────
-  // Handles the case where the app was cold-started from the Google OAuth
-  // redirect (i.e. the app was killed while the in-app browser was open).
-  // openAuthSessionAsync already covers the foreground case inside
-  // signInWithGoogle(), so this only fires on a genuine cold-start deep-link.
+  // maybeCompleteAuthSession() must be called once per app start so that
+  // expo-web-browser can close the in-app browser tab on Android.
+  // The foreground OAuth case (openAuthSessionAsync) also benefits from this.
   useEffect(() => {
-    // Check if the app was opened with an OAuth callback URL.
-    Linking.getInitialURL().then((url) => {
-      if (url?.includes('autotrack://auth/callback')) {
-        WebBrowser.maybeCompleteAuthSession();
-        supabase.auth.exchangeCodeForSession(url);
-      }
-    });
+    WebBrowser.maybeCompleteAuthSession();
 
+    // Cold-start: app was killed while the OAuth browser was open.
+    Linking.getInitialURL().then((url) => {
+      if (url?.includes(OAUTH_REDIRECT)) {
+        supabase.auth.exchangeCodeForSession(url).then(({ error }) => {
+          if (error) console.warn('[OAuth] exchangeCodeForSession (initial URL):', error.message);
+        });
+      }
+    }).catch((e) => console.warn('[OAuth] getInitialURL error:', e));
+
+    // Foreground resume: app receives deep link while running.
     const subscription = Linking.addEventListener('url', ({ url }) => {
-      if (url?.includes('autotrack://auth/callback')) {
-        supabase.auth.exchangeCodeForSession(url);
+      if (url?.includes(OAUTH_REDIRECT)) {
+        supabase.auth.exchangeCodeForSession(url).then(({ error }) => {
+          if (error) console.warn('[OAuth] exchangeCodeForSession (url event):', error.message);
+        });
       }
     });
 

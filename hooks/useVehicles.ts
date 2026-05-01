@@ -45,12 +45,7 @@ async function seedAllIntervals(vehicleId: string): Promise<string | null> {
   if (fetchErr) return fetchErr.message;
   if (!types || types.length === 0) return null;
 
-  const rows = types.map((t: {
-    id: string;
-    default_interval_km: number | null;
-    default_interval_miles: number | null;
-    default_interval_months: number | null;
-  }) => ({
+  const rows = types.map(t => ({
     vehicle_id: vehicleId,
     service_type_id: t.id,
     interval_km: t.default_interval_km ?? (

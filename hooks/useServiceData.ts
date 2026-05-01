@@ -221,9 +221,13 @@ export function useServiceLogs(vehicleId: string | null) {
   ): Promise<ServiceLog | null> => {
     const odometerKm = toKm(log.odometer_at_service, displayUnit);
 
+    // Destructure joined fields (service_type, vehicle) out before inserting —
+    // those are query-time joins, not real columns.
+    const { service_type: _st, vehicle: _v, ...dbFields } = log;
+
     const { data, error: err } = await supabase
       .from('service_logs')
-      .insert({ ...log, odometer_km_at_service: odometerKm })
+      .insert({ ...dbFields, odometer_km_at_service: odometerKm })
       .select('*, service_type:service_types(*)')
       .single();
 

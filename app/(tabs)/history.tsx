@@ -319,9 +319,11 @@ export default function HistoryScreen() {
     ? logs.filter(l => l.service_type_id === filterTypeId)
     : logs;
 
-  // Which service types actually have logs for this vehicle
+  // Which active service types actually have logs for this vehicle.
+  // is_active check ensures deactivated types don't reappear in the filter
+  // if historical logs still reference them.
   const presentTypeIds = new Set(logs.map(l => l.service_type_id));
-  const filterableTypes = serviceTypes.filter(st => presentTypeIds.has(st.id));
+  const filterableTypes = serviceTypes.filter(st => st.is_active && presentTypeIds.has(st.id));
 
   const groups = groupByMonth(filtered);
 
