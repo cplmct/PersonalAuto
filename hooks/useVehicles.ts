@@ -131,7 +131,7 @@ export function useVehicles() {
     const patch: Partial<Vehicle> & { odometer_km?: number } = { ...updates };
 
     if (updates.current_odometer !== undefined) {
-      const unit = updates.odometer_unit ?? vehicle?.odometer_unit ?? 'mi';
+      const unit = updates.odometer_unit ?? vehicle?.odometer_unit ?? 'km';
       patch.odometer_km = toKm(updates.current_odometer, unit);
     }
 

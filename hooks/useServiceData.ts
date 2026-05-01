@@ -217,7 +217,7 @@ export function useServiceLogs(vehicleId: string | null) {
    */
   const addLog = async (
     log: Omit<ServiceLog, 'id' | 'created_at' | 'odometer_km_at_service'>,
-    displayUnit: OdometerUnit = 'mi',
+    displayUnit: OdometerUnit = 'km',
   ): Promise<ServiceLog | null> => {
     const odometerKm = toKm(log.odometer_at_service, displayUnit);
 
