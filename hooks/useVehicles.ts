@@ -161,23 +161,13 @@ export function useVehicles() {
   };
 
   // ── Set primary ────────────────────────────────────────────────────────────
-  // Marks one vehicle as primary and clears the flag on all others.
+  // Delegates to the set_primary_vehicle RPC which atomically clears all
+  // is_primary flags and sets the chosen vehicle in one transaction.
   const setPrimary = async (id: string): Promise<boolean> => {
     if (!user) return false;
 
-    const { error: clearErr } = await supabase
-      .from('vehicles')
-      .update({ is_primary: false, updated_at: new Date().toISOString() })
-      .eq('user_id', user.id);
-    if (clearErr) return false;
-
-    const { data, error: setErr } = await supabase
-      .from('vehicles')
-      .update({ is_primary: true, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single();
-    if (setErr || !data) return false;
+    const { error } = await supabase.rpc('set_primary_vehicle', { vehicle_id: id });
+    if (error) return false;
 
     setVehicles(prev => prev.map(v => ({ ...v, is_primary: v.id === id })));
     return true;
