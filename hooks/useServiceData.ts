@@ -11,9 +11,8 @@ import type {
 import { buildMaintenanceCardData } from '@/utils/maintenance';
 
 // ─── All service types (global reference data, fetched once) ──────────────────
-// Returns ALL service types ordered by sort_order so UI can present a full
-// catalogue. Callers filter by is_default or by whether a vehicle_service_interval
-// row exists to decide what to show on the Dashboard.
+// Returns only active service types ordered by sort_order. Callers filter
+// further by is_default or by whether a vehicle_service_interval row exists.
 
 export function useServiceTypes() {
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
@@ -24,6 +23,7 @@ export function useServiceTypes() {
     supabase
       .from('service_types')
       .select('*')
+      .eq('is_active', true)
       .order('sort_order', { ascending: true })
       .then(({ data, error: err }) => {
         if (err) setError(err.message);

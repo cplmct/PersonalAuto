@@ -69,6 +69,8 @@ export interface ServiceType {
   sort_order: number;
   /** True for the original 5 seeded service types that are enabled for every new vehicle. */
   is_default: boolean;
+  /** False for retired/disabled templates — excluded from the catalogue and new-vehicle seeding. */
+  is_active: boolean;
   created_at: string;
 }
 

@@ -31,6 +31,7 @@ async function seedAllIntervals(vehicleId: string): Promise<string | null> {
   const { data: types, error: fetchErr } = await supabase
     .from('service_types')
     .select('id, default_interval_km, default_interval_miles, default_interval_months')
+    .eq('is_active', true)
     .order('sort_order', { ascending: true });
 
   if (fetchErr) return fetchErr.message;
